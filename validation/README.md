@@ -10,5 +10,13 @@ python validation/validate_ecg_stress.py PAPER/additional_experiments/results/pt
 python validation/validate_nmt_paired.py NMT_EMBEDDINGS PAPER/additional_experiments/results
 ```
 
+For the end-to-end ECG check, export the cohorts in the paper environment and
+pass the row-aligned embedding cache:
+
+```bash
+python validation/export_ptbxl_cohorts.py PTBXL_DIR cohorts.csv            # paper environment
+python validation/validate_ecg_end_to_end.py cohorts.csv EMBEDDINGS.npz ECGFounder PAPER/additional_experiments/results/ptbxl_real_device_association_shift
+```
+
 `validate_ecg_stress.py` exits non-zero if any of the 18 published quantities
 differs by more than 1e-9.

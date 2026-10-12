@@ -91,3 +91,13 @@ def test_restored_weights_hit_target_masses_in_every_draw():
 def test_effective_sample_size():
     assert effective_sample_size(np.ones(10)) == pytest.approx(10)
     assert effective_sample_size(np.r_[1.0, np.zeros(9)]) == pytest.approx(1)
+
+
+def test_explicit_magnitude_fixes_direction_even_when_observed_sign_differs():
+    rng = np.random.default_rng(4)
+    y = rng.integers(0, 2, 4_000)
+    u = (rng.random(4_000) < np.where(y == 1, 0.45, 0.5)).astype(int)  # weak negative association
+    assert odds_ratio(empirical_table(y, u)) < 1.0
+    regimes = pt.observational_regimes(y, u, odds_ratio_magnitude=10.0)
+    assert odds_ratio(regimes["aligned"]) == pytest.approx(10.0)
+    assert odds_ratio(regimes["reversed"]) == pytest.approx(0.1)

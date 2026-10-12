@@ -116,6 +116,7 @@ its saved artifacts:
 | Script | What is compared | Agreement |
 |---|---|---|
 | `validate_ecg_stress.py` | PTB-XL device audit: `G` before/after removal, its reduction, and the utility change for ECGFounder, CLEF-Small, metadata comparators, sensitivity cohorts, and the weak-association pair, with bootstrap intervals (18 quantities) | ≤ 1e-15 |
+| `validate_ecg_end_to_end.py` | The same audit end to end from ECGFounder embeddings recomputed with the paper's pipeline: `G` before/after removal with intervals, utility change, conditional accessibility, all 100 random-control `G`, four cohorts | ≤ 2e-5 (embeddings recomputed on different hardware) |
 | `validate_nmt_paired.py` | Paired NMT audit end to end from frozen embeddings (8 encoders): `G` before/after removal, all random-control `G`, paired logit contrast, selected `C`, verdict | ≤ 4e-8 |
 | | Calibrated LPI from the paper's exported probe states, including bootstrap intervals | ≤ 4e-8 |
 | | Calibrated LPI with probes refitted by `physiotrace` | ≤ 8e-4 bits (optimizer tolerance) |

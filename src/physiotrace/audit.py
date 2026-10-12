@@ -71,7 +71,7 @@ def audit_observational(
     C: float = 1.0,
     n_random: int = 100,
     regimes: Mapping[str, float] | None = None,
-    odds_ratio_magnitude: float | None = None,
+    odds_ratio_magnitude: float | Mapping | None = None,
     n_bootstrap: int = 2_000,
     confidence_level: float = 0.95,
     seed: int = 2026,
@@ -108,6 +108,10 @@ def audit_observational(
         Regime name to log-odds-ratio multiplier; defaults to
         :data:`physiotrace.weights.REGIMES` (must include aligned,
         independent, reversed).
+    odds_ratio_magnitude : float or mapping, optional
+        Association strength to stress with instead of the one observed in
+        the training records, either one value or one per fold. Use it to
+        stress a weakly associated factor at the strength seen elsewhere.
     """
 
     h = as_matrix(embeddings, name="embeddings")
@@ -143,7 +147,9 @@ def audit_observational(
         }
         tables_by_fold[fold] = observational_regimes(
             y_codes[train & design], u_codes[train & design], multipliers=multipliers,
-            odds_ratio_magnitude=odds_ratio_magnitude,
+            odds_ratio_magnitude=(
+                odds_ratio_magnitude[fold] if isinstance(odds_ratio_magnitude, Mapping) else odds_ratio_magnitude
+            ),
         )
 
         subspace, probe = conditional_direction(z_train, y_train, u_train, C=C)

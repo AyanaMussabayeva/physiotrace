@@ -104,18 +104,24 @@ def observational_regimes(
 ) -> dict[str, np.ndarray]:
     """Regimes for a binary target and binary provenance factor.
 
-    Marginals and the association strength ``theta`` are estimated from the
-    given (training) records. Regime ``e`` has odds ratio ``theta ** m_e``, so
-    ``aligned`` reproduces the observed association, ``independent`` removes it,
-    and ``reversed`` inverts it.
+    Marginals are estimated from the given (training) records. Regime ``e``
+    has odds ratio ``theta ** m_e``, so ``aligned`` has odds ratio ``theta``,
+    ``independent`` removes the association, and ``reversed`` inverts it.
+
+    By default ``theta`` is the observed odds ratio, so ``aligned`` reproduces
+    the association a naturally fitted head was trained under. Passing
+    ``odds_ratio_magnitude`` fixes ``theta`` instead, in the direction given
+    (values above 1 associate ``u = 1`` with ``y = 1``); use it to stress a
+    weakly associated factor at a strength observed elsewhere without letting
+    a noisy observed sign choose the direction.
     """
 
     table = empirical_table(y, u)
     if np.any(table <= 0.0):
         raise ValueError("Every (y, u) cell must be observed to define association regimes.")
     theta = odds_ratio(table) if odds_ratio_magnitude is None else float(odds_ratio_magnitude)
-    if odds_ratio_magnitude is not None and odds_ratio(table) < 1.0:
-        theta = 1.0 / theta
+    if not np.isfinite(theta) or theta <= 0.0:
+        raise ValueError("odds_ratio_magnitude must be finite and positive.")
     p_y, p_u = float(table[1].sum()), float(table[:, 1].sum())
     multipliers = REGIMES if multipliers is None else multipliers
     return {name: fixed_marginal_table(p_y, p_u, float(np.exp(m * np.log(theta)))) for name, m in multipliers.items()}

@@ -29,6 +29,9 @@ certified**, or **reliance – remedy not certified**.
 pip install -e .            # from a checkout; numpy, scipy, scikit-learn, pandas
 ```
 
+Python 3.10–3.13. Tested on every push from the oldest supported dependencies
+(numpy 1.24, scipy 1.10, scikit-learn 1.3, pandas 2.0) to the latest.
+
 ## Quickstart
 
 ### Observational data (for example device or site)

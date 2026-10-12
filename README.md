@@ -36,36 +36,63 @@ pip install -e .            # from a checkout; numpy, scipy, scikit-learn, panda
 ```python
 import physiotrace as pt
 
-report = pt.audit_observational(
-    embeddings,          # (n, d) frozen embeddings
-    y,                   # binary target
-    u,                   # binary provenance factor, e.g. device A / device B
-    folds=folds,         # cross-fitting folds; keep each patient in one fold
-    clusters=patient_id, # bootstrap unit
-    delta=0.01,          # tolerated utility loss
-    epsilon=0.01,        # smallest G that counts as reliance
-)
+train = pt.Split(embeddings, y, u, clusters=patient_id)   # u: e.g. device A / device B
+test = pt.Split(test_embeddings, test_y, test_u, clusters=test_patient_id)
+
+report = pt.audit_observational(train, test, epsilon=0.01, delta=0.01)
 print(report)
+report.verdict        # pt.Verdict.REMEDY_CERTIFIED / REMEDY_NOT_CERTIFIED / NO_RELIANCE
+report.to_dict()      # JSON-serializable summary
 ```
 
 ```text
 PhysioTRACE audit (observational)
   verdict: reliance, remedy certified
-  Recover   conditional_accessibility_auroc = 0.9947
-  Stress    G = 0.1363 [0.1267, 0.1465]  (epsilon = 0.01; 95% interval)
-  Intervene G after rank-1 removal = 0.0002 [-0.0007, 0.0012]  (100% reduction)
+  Recover   conditional_accessibility_auroc = 0.9946
+  Stress    G = 0.1384 [0.1228, 0.1539]  (epsilon = 0.01; 95% interval)
+  Intervene G after rank-1 removal = -0.0000 [-0.0013, 0.0012]  (100% reduction)
   Verify    specific: yes (beats 100/100 random controls)
-            safe: yes (control-head AUROC, independent regime change +0.0002 [-0.0000, 0.0005], delta = 0.01)
+            safe: yes (control-head AUROC, independent regime change -0.0000 [-0.0004, 0.0003], delta = 0.01)
 ```
 
 (Output of `examples/quickstart_synthetic.py`, which also shows the other two
-verdicts and a paired audit.)
+verdicts, a cross-fitted audit, and a paired audit.)
+
+`y` and `u` can hold any two labels each (strings or numbers). `clusters`
+identifies who each record belongs to (patient, subject); it is the bootstrap
+unit, and a cluster on both sides of the split is rejected. `epsilon` is the
+smallest `G` that counts as reliance and `delta` the tolerated utility loss;
+declare both, and the localization `rank`, before looking at test results.
 
 The exposed head is fitted on the natural association and the control head
 with independence weights. Provenance is localized conditionally on the
 target, so removal does not by default discard population signal that sources
-differ in. For a single train/test split, pass two fold values and
-`test_folds=[test_value]`.
+differ in.
+
+To cross-fit over folds instead, as in the paper's PTB-XL audit:
+
+```python
+report = pt.audit_observational_crossfit(embeddings, y, u, folds=folds, clusters=patient_id)
+```
+
+### Checks
+
+Every report lists validity checks under `report.findings` and in
+`print(report)`: too few records in a `(y, u)` cell, a small effective sample
+or few effective clusters after reweighting, a very large weight, a stressed
+association too weak to test, a head that did not converge, missing clusters,
+and too few bootstrap draws. Checks never change the verdict; those of
+severity `warning` are also raised as `pt.PhysioTraceWarning`. Thresholds live
+in `pt.Gates`, and `pt.Gates.paper()` gives the stricter gates of the paper:
+
+```python
+report = pt.audit_observational(train, test, gates=pt.Gates.paper())
+```
+
+Common input mistakes fail early with a specific message: a target with more
+than two classes, a provenance factor with more than two groups, a patient in
+two folds or on both sides of the split, or a `(y, u)` combination with no
+records.
 
 ### Paired views (for example EEG references of the same record)
 

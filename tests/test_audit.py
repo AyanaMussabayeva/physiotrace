@@ -9,7 +9,7 @@ from physiotrace.synthetic import make_observational, make_paired
 
 def observational(**kwargs):
     data = make_observational(n=2_000, dim=16, seed=11, **{k: v for k, v in kwargs.items()})
-    return pt.audit_observational(
+    return pt.audit_observational_crossfit(
         data.embeddings, data.y, data.u, folds=data.folds, clusters=data.clusters, n_bootstrap=200, n_random=30
     )
 
@@ -38,7 +38,7 @@ def test_observational_entangled_component_is_refused():
 def test_single_train_test_split_via_test_folds():
     data = make_observational(n=1_500, dim=12, seed=3)
     folds = (data.folds == 0).astype(int)  # 1 = test
-    report = pt.audit_observational(
+    report = pt.audit_observational_crossfit(
         data.embeddings, data.y, data.u, folds=folds, clusters=data.clusters, test_folds=[1], n_bootstrap=100, n_random=10
     )
     assert len(report.details["folds"]) == 1

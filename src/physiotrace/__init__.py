@@ -7,7 +7,8 @@ within a declared utility margin.
 """
 
 from . import bootstrap, intervene, metrics, recover, stress, synthetic, weights
-from .audit import PairedSplit, audit_observational, audit_paired
+from .audit import PairedSplit, Split, audit_observational, audit_observational_crossfit, audit_paired
+from .diagnostics import Finding, Gates, PhysioTraceWarning
 from .intervene import Subspace, Whitening, conditional_direction, paired_subspace, random_subspaces
 from .metrics import weighted_auroc
 from .recover import LPIResult, fit_calibrated_probe, lpi
@@ -26,6 +27,11 @@ __version__ = "0.1.0.dev0"
 
 __all__ = [
     "AuditReport",
+    "Finding",
+    "Gates",
+    "PhysioTraceWarning",
+    "Split",
+    "audit_observational_crossfit",
     "LPIResult",
     "PairedSplit",
     "Subspace",

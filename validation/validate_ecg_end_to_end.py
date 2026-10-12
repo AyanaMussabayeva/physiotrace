@@ -55,7 +55,7 @@ def main(cohorts_csv: Path, embeddings_npz: Path, model: str, bundle: Path) -> i
         if weak:  # stressed at the primary pair's per-fold strength, as in the paper
             selected = targets[(targets.analysis == analysis) & (targets.outer_fold >= 0)]
             magnitude = selected.groupby("outer_fold").stress_odds_ratio_magnitude.first().to_dict()
-        report = pt.audit_observational(
+        report = pt.audit_observational_crossfit(
             embeddings[frame.embedding_index.to_numpy()], frame.target.to_numpy(), frame.device_target.to_numpy(),
             folds=frame.outer_fold.to_numpy(), clusters=frame.patient_id.to_numpy(), design=frame.design.to_numpy(),
             odds_ratio_magnitude=magnitude, n_bootstrap=REPLICATES.get(analysis, 1000), seed=2026,

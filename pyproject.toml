@@ -25,3 +25,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Small synthetic audits legitimately trip the validity checks; tests that
+# assert on warnings use pytest.warns.
+filterwarnings = ["ignore::physiotrace.diagnostics.PhysioTraceWarning"]

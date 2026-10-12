@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .audit import PairedSplit
+from .audit import PairedSplit, Split
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,15 @@ class ObservationalData:
     u: np.ndarray
     clusters: np.ndarray
     folds: np.ndarray
+
+    def train_test(self, test_fold: int = 0) -> tuple[Split, Split]:
+        """Split by fold: ``test_fold`` becomes the test set."""
+
+        test = self.folds == test_fold
+        parts = []
+        for mask in (~test, test):
+            parts.append(Split(self.embeddings[mask], self.y[mask], self.u[mask], self.clusters[mask]))
+        return parts[0], parts[1]
 
 
 def make_observational(

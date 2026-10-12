@@ -32,6 +32,7 @@ class AuditReport:
     recover: dict
     aurocs: pd.DataFrame
     details: dict = field(default_factory=dict)
+    findings: tuple = ()
 
     @property
     def verdict(self) -> Verdict:
@@ -66,6 +67,11 @@ class AuditReport:
             "confidence_level": self.confidence_level,
             "n_bootstrap": self.n_bootstrap,
             "recover": {k: (list(v) if isinstance(v, tuple) else v) for k, v in self.recover.items()},
+            "findings": [
+                {"code": f.code, "severity": f.severity, "where": f.where, "message": f.message,
+                 "value": f.value, "threshold": f.threshold}
+                for f in self.findings
+            ],
         }
 
     @property
@@ -89,7 +95,7 @@ class AuditReport:
         lines.append(f"  Stress    G = {self.G:.4f}{ci(self.G_ci)}  (epsilon = {self.epsilon:g}; {level}% interval)")
         if not d.reliance:
             lines.append("  Intervene / Verify not reached: no reliance detected.")
-            return "\n".join(lines)
+            return "\n".join(lines + self._finding_lines())
         lines.append(
             f"  Intervene G after rank-{self.rank} removal = {self.G_after:.4f}{ci(self.G_after_ci)}"
             f"  ({100 * self.G_reduction_fraction:.0f}% reduction)"
@@ -102,7 +108,13 @@ class AuditReport:
             f"            safe: {'yes' if d.safe else 'no'}"
             f" ({self.utility_metric} change {self.utility_change:+.4f}{ci(self.utility_change_ci)}, delta = {self.delta:g})"
         )
-        return "\n".join(lines)
+        return "\n".join(lines + self._finding_lines())
+
+    def _finding_lines(self) -> list[str]:
+        if not self.findings:
+            return []
+        ordered = sorted(self.findings, key=lambda f: f.severity != "warning")
+        return ["  Checks"] + [f"    - {finding}" for finding in ordered]
 
     def __str__(self) -> str:
         return self.summary()

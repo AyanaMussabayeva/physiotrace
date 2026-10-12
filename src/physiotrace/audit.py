@@ -2,11 +2,12 @@
 
 Two designs are supported, matching the two modes of the paper:
 
-* :func:`audit_observational` — collected data in which a binary provenance
-  factor (device, site) is naturally associated with a binary target. The
-  exposed head is fitted on the natural association, the control head with
-  independence weights, and provenance is localized conditionally on the
-  target. Cross-fitting over folds is supported (paper Section 4.3).
+* :func:`audit_observational` (one train/test split) and
+  :func:`audit_observational_crossfit` (cross-fitting, paper Section 4.3) —
+  collected data in which a binary provenance factor (device, site) is
+  naturally associated with a binary target. The exposed head is fitted on
+  the natural association, the control head with independence weights, and
+  provenance is localized conditionally on the target.
 * :func:`audit_paired` — every record is observed under ``K`` provenance views
   (for example EEG references). The association is induced by a designed
   coupling, each view serves in turn as the shortcut, and provenance is
@@ -27,6 +28,18 @@ from sklearn.preprocessing import StandardScaler
 
 from ._validation import as_matrix, encode, same_length
 from .bootstrap import cluster_bootstrap_counts, percentile_interval
+from .diagnostics import (
+    Gates,
+    check_association,
+    check_bootstrap,
+    check_cells,
+    check_class_counts,
+    check_clusters_given,
+    check_convergence,
+    check_grid_edge,
+    check_reversed_weights,
+    emit,
+)
 from .heads import fit_linear_head
 from .intervene import class_means, conditional_direction, paired_subspace, random_subspaces
 from .metrics import weighted_auroc
@@ -57,7 +70,59 @@ def _check_regimes(names) -> None:
 # --------------------------------------------------------------------------- observational
 
 
-def audit_observational(
+@dataclass(frozen=True)
+class Split:
+    """Records of one split for an observational audit: one row per record.
+
+    ``clusters`` identifies who each record belongs to (patient, subject); it
+    is the bootstrap unit and must not be shared between train and test.
+    """
+
+    embeddings: np.ndarray
+    y: np.ndarray
+    u: np.ndarray
+    clusters: np.ndarray | None = None
+
+
+def audit_observational(train: Split, test: Split, **options) -> AuditReport:
+    """Audit reliance on a naturally associated binary provenance factor, on one train/test split.
+
+    Heads, standardization, and the provenance localization are fitted on
+    ``train``; the stress, intervention, and verification are evaluated on
+    ``test``. Keyword options are those of :func:`audit_observational_crossfit`
+    (``epsilon``, ``delta``, ``C``, ``rank``, ``n_random``, ``n_bootstrap``,
+    ``gates``, ...), except the fold arguments.
+    """
+
+    for name in ("folds", "test_folds", "design"):
+        if name in options:
+            raise TypeError(f"audit_observational() got {name!r}; use audit_observational_crossfit for cross-fitting.")
+    n_train, n_test = len(train.y), len(test.y)
+    clusters_given = train.clusters is not None and test.clusters is not None
+    if clusters_given:
+        shared = np.intersect1d(np.asarray(train.clusters), np.asarray(test.clusters))
+        if shared.size:
+            raise ValueError(
+                f"{shared.size} cluster(s) occur in both train and test (for example {shared[0]!r}); "
+                "keep every patient or subject on one side of the split."
+            )
+        clusters = np.concatenate([np.asarray(train.clusters), np.asarray(test.clusters)])
+    else:
+        clusters = np.arange(n_train + n_test)
+    return audit_observational_crossfit(
+        np.concatenate([as_matrix(train.embeddings, name="train.embeddings"), as_matrix(test.embeddings, name="test.embeddings")]),
+        np.concatenate([np.asarray(train.y), np.asarray(test.y)]),
+        np.concatenate([np.asarray(train.u), np.asarray(test.u)]),
+        folds=np.r_[np.zeros(n_train, dtype=np.int64), np.ones(n_test, dtype=np.int64)],
+        clusters=clusters,
+        test_folds=[1],
+        _clusters_given=clusters_given,
+        _where={1: ("test", "training")},
+        **options,
+    )
+
+
+def audit_observational_crossfit(
     embeddings,
     y,
     u,
@@ -78,8 +143,13 @@ def audit_observational(
     seed: int = 2026,
     y_levels: Sequence | None = None,
     u_levels: Sequence | None = None,
+    gates: Gates | None = None,
+    _clusters_given: bool | None = None,
+    _where: Mapping | None = None,
 ) -> AuditReport:
-    """Audit reliance on a naturally associated binary provenance factor.
+    """Audit reliance on a naturally associated binary provenance factor with cross-fitting.
+
+    This is the design of the paper's PTB-XL device audit (Section 4.3).
 
     Parameters
     ----------
@@ -91,14 +161,15 @@ def audit_observational(
     folds : array (n,)
         Cross-fitting fold of each record. Each evaluated fold is held out
         while heads, scaler, and localization are fitted on all other folds.
-        Keep every identity (patient) inside one fold. For a single train/test
-        split, use two fold values and ``test_folds=[test_value]``.
+        Keep every identity (patient) inside one fold.
     clusters : array (n,), optional
         Identity of each record (for example patient); the bootstrap resamples
         clusters within each test fold. Defaults to one cluster per record.
     design : bool array (n,), optional
         Records whose association defines the regimes; within each fold only
         its training records are used. Defaults to all training records.
+    test_folds : sequence, optional
+        Folds to evaluate; defaults to all.
     epsilon, delta : float
         Declared effect size for reliance and tolerated utility loss.
     C : float
@@ -115,22 +186,48 @@ def audit_observational(
         Association strength to stress with instead of the one observed in
         the training records, either one value or one per fold. Use it to
         stress a weakly associated factor at the strength seen elsewhere.
+    gates : Gates, optional
+        Thresholds of the validity checks reported in ``report.findings``.
     """
 
+    gates = Gates() if gates is None else gates
     h = as_matrix(embeddings, name="embeddings")
-    y_codes, _ = encode(y, y_levels)
-    u_codes, _ = encode(u, u_levels)
+    y_codes, y_found = encode(y, y_levels)
+    u_codes, u_found = encode(u, u_levels)
     folds = np.asarray(folds)
     n = same_length(embeddings=h, y=y_codes, u=u_codes, folds=folds)
-    if y_codes.max() != 1 or u_codes.max() != 1:
-        raise ValueError("audit_observational needs a binary target and a binary provenance factor.")
+    if len(y_found) != 2:
+        raise ValueError(
+            f"The target must be binary; found {len(y_found)} classes {list(y_found)[:6]}. "
+            "Multiclass targets are not supported yet; audit one class against the rest."
+        )
+    if len(u_found) != 2:
+        raise ValueError(
+            f"The provenance factor must have two groups; found {len(u_found)} {list(u_found)[:6]}. "
+            "Audit one pair of groups at a time (for example two devices), or use audit_paired when every "
+            "record is observed under all groups."
+        )
+    clusters_given = (clusters is not None) if _clusters_given is None else _clusters_given
     clusters = np.arange(n) if clusters is None else np.asarray(clusters)
     design = np.ones(n, dtype=bool) if design is None else np.asarray(design, dtype=bool)
     same_length(embeddings=h, clusters=clusters, design=design)
+    crossing = pd.DataFrame({"cluster": clusters, "fold": folds}).groupby("cluster")["fold"].nunique()
+    if crossing.gt(1).any():
+        example = crossing[crossing.gt(1)].index[0]
+        raise ValueError(
+            f"{int(crossing.gt(1).sum())} cluster(s) occur in more than one fold (for example {example!r}); "
+            "keep every patient or subject inside one fold."
+        )
     multipliers = dict(REGIMES if regimes is None else regimes)
     _check_regimes(multipliers)
     fold_levels = tuple(np.unique(folds).tolist()) if test_folds is None else tuple(test_folds)
 
+    def where(fold, role="test"):
+        if _where and fold in _where:
+            return _where[fold][0] if role == "test" else _where[fold][1]
+        return f"fold {fold}" if role == "test" else f"fold {fold} training"
+
+    findings = check_clusters_given(clusters_given) + check_bootstrap(n_bootstrap, gates)
     arm_scores: dict[tuple, np.ndarray] = {}
     random_scores: dict[tuple, list[np.ndarray]] = {}
     tables_by_fold: dict = {}
@@ -141,24 +238,40 @@ def audit_observational(
         train = ~test
         if not test.any():
             raise ValueError(f"Fold {fold!r} has no records.")
+        y_train, u_train = y_codes[train], u_codes[train]
+        y_test, u_test = y_codes[test], u_codes[test]
+        for codes_y, codes_u, role in ((y_train, u_train, "training"), (y_test, u_test, "test")):
+            counts = np.zeros((2, 2), dtype=np.int64)
+            np.add.at(counts, (codes_y, codes_u), 1)
+            if np.any(counts == 0):
+                y_cell, u_cell = np.argwhere(counts == 0)[0]
+                raise ValueError(
+                    f"[{where(fold, role)}] no {role} record has y={y_found[y_cell]!r} and u={u_found[u_cell]!r}; "
+                    "every (y, u) combination must be observed to define the regimes."
+                )
+            findings += check_cells(codes_y, codes_u, where=where(fold, role), role=role, gates=gates)
         scaler = StandardScaler().fit(h[train])
         z_train, z_test = scaler.transform(h[train]), scaler.transform(h[test])
-        y_train, u_train = y_codes[train], u_codes[train]
         heads = {
             EXPOSED: fit_linear_head(z_train, y_train, C=C, tol=1e-7),
             CONTROL: fit_linear_head(z_train, y_train, independence_weights(y_train, u_train), C=C, tol=1e-7),
         }
+        findings += check_convergence(all(head.converged for head in heads.values()), where=where(fold, "training"))
         tables_by_fold[fold] = observational_regimes(
             y_codes[train & design], u_codes[train & design], multipliers=multipliers,
             odds_ratio_magnitude=(
                 odds_ratio_magnitude[fold] if isinstance(odds_ratio_magnitude, Mapping) else odds_ratio_magnitude
             ),
         )
+        findings += check_association(_odds(tables_by_fold[fold]["aligned"]), where=where(fold, "training"), gates=gates)
+        findings += check_reversed_weights(
+            y_test, u_test, clusters[test], tables_by_fold[fold]["reversed"], where=where(fold), gates=gates
+        )
 
         subspace, probe = conditional_direction(z_train, y_train, u_train, rank=rank, C=C)
-        residual_test = z_test - class_means(z_train, y_train)[y_codes[test]]
+        residual_test = z_test - class_means(z_train, y_train)[y_test]
         device_score = probe.predict_proba(subspace.whitening.transform(residual_test))[:, 1]
-        accessibility.append(_conditional_auroc(u_codes[test], y_codes[test], device_score))
+        accessibility.append(_conditional_auroc(u_test, y_test, device_score))
 
         z_targeted = subspace.remove(z_test)
         controls = random_subspaces(subspace.whitening, rank, n_random, seed=seed + 10_000 * (index + 1) + h.shape[1])
@@ -230,12 +343,13 @@ def audit_observational(
         utility_metric="control-head AUROC, independent regime",
         recover={"conditional_accessibility_auroc": float(np.mean(accessibility))},
         aurocs=aurocs,
-        details={"folds": pd.DataFrame(fold_rows)},
+        details={"folds": pd.DataFrame(fold_rows), "levels": {"y": y_found, "u": u_found}},
         rank=rank,
         epsilon=epsilon,
         delta=delta,
         confidence_level=confidence_level,
         n_bootstrap=n_bootstrap,
+        findings=findings,
     )
 
 
@@ -286,6 +400,7 @@ def audit_paired(
     y_levels: Sequence | None = None,
     compute_lpi: bool = True,
     whitening: str = "eigh",
+    gates: Gates | None = None,
 ) -> AuditReport:
     """Audit reliance on a provenance factor observed as paired views of each record.
 
@@ -298,6 +413,8 @@ def audit_paired(
     random controls (seeded by ``seed``) are localized on ``train`` only.
     """
 
+    gates = Gates() if gates is None else gates
+    findings = check_bootstrap(n_bootstrap, gates)
     splits = {"train": train, "test": test} | ({"val": val} if val is not None else {})
     view_levels = tuple(np.unique(np.asarray(train.views)).tolist()) if view_order is None else tuple(view_order)
     k = len(view_levels)
@@ -307,6 +424,7 @@ def audit_paired(
         if val is None:
             raise ValueError("Pass val= to select C, or fix C.")
         C = _select_c(encoded["train"], encoded["val"], k, c_grid, seed)
+        findings += check_grid_edge(C, c_grid, name="C")
     fit_rows = _concat(encoded["train"], encoded["val"]) if val is not None else encoded["train"]
     h_fit, y_fit, v_fit = fit_rows["h"], fit_rows["y"], fit_rows["v"]
 
@@ -317,6 +435,7 @@ def audit_paired(
 
     control = head(designed_coupling_table(k, 0, p_shortcut, "independent"))
     exposed = [head(designed_coupling_table(k, g, p_shortcut, "aligned")) for g in range(k)]
+    findings += check_convergence(control.converged and all(e.converged for e in exposed), where="heads")
 
     tr = encoded["train"]
     subspace = paired_subspace(tr["h"], tr["r"], tr["v"], rank=rank, view_order=range(k), whitening=whitening)
@@ -331,6 +450,7 @@ def audit_paired(
     record_ids, record_codes = np.unique(te["r"], return_inverse=True)
     record_labels = np.zeros(len(record_ids), dtype=np.int64)
     record_labels[record_codes] = te["y"]
+    findings += check_class_counts(record_labels, where="test records", gates=gates)
     counts = cluster_bootstrap_counts(record_ids, strata=record_labels, n_bootstrap=n_bootstrap, seed=seed)[:, record_codes]
 
     tables = {(g, regime): designed_coupling_table(k, g, p_shortcut, regime) for g in range(k) for regime in CORE_REGIMES}
@@ -388,6 +508,7 @@ def audit_paired(
         recover=recover,
         aurocs=pd.DataFrame(rows),
         details=details,
+        findings=findings,
         rank=rank,
         epsilon=epsilon,
         delta=delta,
@@ -456,7 +577,8 @@ def _paired_contrast(control, exposed, values, layout, record_labels) -> float:
 
 
 def _assemble(*, mode, g_full, g_targeted, g_random, utility, utility_before, utility_after, utility_metric,
-              recover, aurocs, details, rank, epsilon, delta, confidence_level, n_bootstrap) -> AuditReport:
+              recover, aurocs, details, rank, epsilon, delta, confidence_level, n_bootstrap, findings) -> AuditReport:
+    emit(findings)
     g_full, g_targeted, utility = (np.atleast_1d(np.asarray(x, dtype=np.float64)) for x in (g_full, g_targeted, utility))
     has_draws = n_bootstrap > 0
     g_ci = percentile_interval(g_full[1:], confidence_level) if has_draws else (float("nan"),) * 2
@@ -492,7 +614,8 @@ def _assemble(*, mode, g_full, g_targeted, g_random, utility, utility_before, ut
         recover=recover,
         aurocs=aurocs,
         details=details,
+        findings=tuple(findings),
     )
 
 
-__all__ = ["PairedSplit", "audit_observational", "audit_paired"]
+__all__ = ["PairedSplit", "Split", "audit_observational", "audit_observational_crossfit", "audit_paired"]

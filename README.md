@@ -23,6 +23,10 @@ head's behavior directly:
 Every audit ends in one of three verdicts: **no reliance**, **reliance – remedy
 certified**, or **reliance – remedy not certified**.
 
+**New here? Start with the [tutorial](docs/tutorial.ipynb)**: bring your own
+embeddings, choose the settings, read the report, and avoid the mistakes that
+make an audit misleading.
+
 ## Install
 
 ```bash

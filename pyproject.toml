@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 plot = ["matplotlib>=3.7"]
 dev = ["pytest>=7"]
+docs = ["matplotlib>=3.7", "nbformat>=5", "nbclient>=0.7", "ipykernel>=6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

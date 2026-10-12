@@ -48,6 +48,18 @@ jobs:
       - run: python -m pip install --no-deps .
       - run: python -m pytest -q
 
+  tutorial:
+    name: tutorial notebook runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install ".[docs]"
+      - run: python docs/execute_tutorial.py --check
+
   build:
     name: build distributions
     runs-on: ubuntu-latest

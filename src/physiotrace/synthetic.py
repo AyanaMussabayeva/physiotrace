@@ -43,6 +43,7 @@ def make_observational(
     entangled: bool = False,
     n_folds: int = 5,
     records_per_cluster: int = 2,
+    shared_within_cluster: bool = False,
     seed: int = 0,
 ) -> ObservationalData:
     """Binary target and binary provenance with a chosen natural association.
@@ -53,26 +54,39 @@ def make_observational(
       so there is nothing to rely on.
     * ``entangled=True``: the provenance signature lies along the task
       direction, so removing it also removes task signal.
+    * ``shared_within_cluster=True``: records of one cluster (patient) share
+      their target, provenance group, and most of their embedding, as repeated
+      recordings of one person do. Ignoring clusters then makes intervals too
+      narrow.
     """
 
     rng = np.random.default_rng(seed)
-    y = rng.integers(0, 2, size=n)
+    clusters = np.arange(n) // records_per_cluster
+    n_clusters = int(clusters.max()) + 1
     # Symmetric P(u=1 | y): odds sqrt(OR) for y=1 and 1/sqrt(OR) for y=0, so the u--y odds ratio is OR.
     root = np.sqrt(odds_ratio)
-    p_u = np.where(y == 1, root / (1.0 + root), 1.0 / (1.0 + root))
-    u = (rng.random(n) < p_u).astype(np.int64)
+    if shared_within_cluster:
+        y = rng.integers(0, 2, size=n_clusters)[clusters]
+        p_u = np.where(y == 1, root / (1.0 + root), 1.0 / (1.0 + root))
+        u = (rng.random(n_clusters) < p_u[np.unique(clusters, return_index=True)[1]]).astype(np.int64)[clusters]
+    else:
+        y = rng.integers(0, 2, size=n)
+        p_u = np.where(y == 1, root / (1.0 + root), 1.0 / (1.0 + root))
+        u = (rng.random(n) < p_u).astype(np.int64)
 
     task_direction = _unit(rng.normal(size=dim))
     provenance_direction = task_direction.copy() if entangled else _unit(_orthogonal_to(rng.normal(size=dim), task_direction))
-    latent = rng.normal(size=(n, dim))
+    if shared_within_cluster:
+        latent = rng.normal(size=(n_clusters, dim))[clusters] + 0.3 * rng.normal(size=(n, dim))
+    else:
+        latent = rng.normal(size=(n, dim))
     embeddings = (
         latent
         + task_strength * (2 * y - 1)[:, None] * task_direction[None, :]
         + provenance_strength * (2 * u - 1)[:, None] * provenance_direction[None, :]
         + 0.5 * rng.normal(size=(n, dim))
     )
-    clusters = np.arange(n) // records_per_cluster
-    folds = rng.permutation(np.max(clusters) + 1)[clusters] % n_folds
+    folds = rng.permutation(n_clusters)[clusters] % n_folds
     return ObservationalData(embeddings=embeddings, y=y, u=u, clusters=clusters, folds=folds)
 
 

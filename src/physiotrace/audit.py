@@ -103,7 +103,7 @@ def audit_observational(train: Split, test: Split, **options) -> AuditReport:
         shared = np.intersect1d(np.asarray(train.clusters), np.asarray(test.clusters))
         if shared.size:
             raise ValueError(
-                f"{shared.size} cluster(s) occur in both train and test (for example {shared[0]!r}); "
+                f"{shared.size} cluster(s) occur in both train and test (for example {_plain(shared[0])!r}); "
                 "keep every patient or subject on one side of the split."
             )
         clusters = np.concatenate([np.asarray(train.clusters), np.asarray(test.clusters)])
@@ -213,7 +213,7 @@ def audit_observational_crossfit(
     same_length(embeddings=h, clusters=clusters, design=design)
     crossing = pd.DataFrame({"cluster": clusters, "fold": folds}).groupby("cluster")["fold"].nunique()
     if crossing.gt(1).any():
-        example = crossing[crossing.gt(1)].index[0]
+        example = _plain(crossing[crossing.gt(1)].index[0])
         raise ValueError(
             f"{int(crossing.gt(1).sum())} cluster(s) occur in more than one fold (for example {example!r}); "
             "keep every patient or subject inside one fold."
@@ -351,6 +351,12 @@ def audit_observational_crossfit(
         n_bootstrap=n_bootstrap,
         findings=findings,
     )
+
+
+def _plain(value):
+    """Python scalar for readable error messages (``0`` rather than ``np.int64(0)``)."""
+
+    return value.item() if isinstance(value, np.generic) else value
 
 
 def _odds(table) -> float:

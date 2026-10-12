@@ -23,14 +23,15 @@ head's behavior directly:
 Every audit ends in one of three verdicts: **no reliance**, **reliance – remedy
 certified**, or **reliance – remedy not certified**.
 
-**New here? Start with the [tutorial](docs/tutorial.ipynb)**: bring your own
+**New here? Start with the [tutorial](https://github.com/AyanaMussabayeva/physiotrace/blob/main/docs/tutorial.ipynb)**: bring your own
 embeddings, choose the settings, read the report, and avoid the mistakes that
 make an audit misleading.
 
 ## Install
 
 ```bash
-pip install -e .            # from a checkout; numpy, scipy, scikit-learn, pandas
+pip install --pre physiotrace         # 0.1.0a1 is a pre-release
+pip install --pre "physiotrace[plot]" # with matplotlib, for the tutorial figures
 ```
 
 Python 3.10–3.13. Tested on every push from the oldest supported dependencies
@@ -62,7 +63,7 @@ PhysioTRACE audit (observational)
             safe: yes (control-head AUROC, independent regime change -0.0000 [-0.0004, 0.0003], delta = 0.01)
 ```
 
-(Output of `examples/quickstart_synthetic.py`, which also shows the other two
+(Output of [`examples/quickstart_synthetic.py`](https://github.com/AyanaMussabayeva/physiotrace/blob/main/examples/quickstart_synthetic.py), which also shows the other two
 verdicts, a cross-fitted audit, and a paired audit.)
 
 `y` and `u` can hold any two labels each (strings or numbers). `clusters`
@@ -144,7 +145,7 @@ reproduce each of the three verdicts on purpose.
 
 ## Validation against the paper
 
-`validation/` reproduces the published numbers of the PhysioTRACE paper from
+[`validation/`](https://github.com/AyanaMussabayeva/physiotrace/blob/main/validation) reproduces the published numbers of the PhysioTRACE paper from
 its saved artifacts:
 
 | Script | What is compared | Agreement |

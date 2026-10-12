@@ -23,7 +23,12 @@ from .weights import (
     observational_regimes,
 )
 
-__version__ = "0.1.0.dev0"
+try:
+    from importlib.metadata import PackageNotFoundError, version as _version
+
+    __version__ = _version("physiotrace")
+except PackageNotFoundError:  # running from a source tree without installation
+    __version__ = "0+unknown"
 
 __all__ = [
     "AuditReport",

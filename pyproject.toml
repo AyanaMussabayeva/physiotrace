@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "physiotrace"
+version = "0.1.0.dev0"
+description = "Behavioral audit of provenance reliance in frozen-encoder task heads (Recover, Stress, Intervene, Verify)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "scikit-learn>=1.3",
+  "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

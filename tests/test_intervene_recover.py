@@ -85,3 +85,14 @@ def test_lpi_is_positive_for_decodable_groups_and_near_zero_for_noise():
         else:
             assert abs(result.bits) < 0.05 and result.ci_low < 0.02
         assert result.baseline_bits == pytest.approx(np.log2(3), abs=0.02)
+
+
+def test_conditional_direction_higher_rank_is_orthonormal_and_extends_rank_one():
+    from physiotrace.synthetic import make_observational
+
+    data = make_observational(n=1_500, dim=12, seed=8)
+    one, _ = pt.conditional_direction(data.embeddings, data.y, data.u, rank=1)
+    three, _ = pt.conditional_direction(data.embeddings, data.y, data.u, rank=3)
+    assert three.rank == 3
+    assert np.allclose(three.basis.T @ three.basis, np.eye(3), atol=1e-8)
+    assert np.allclose(np.abs(three.basis[:, 0]), np.abs(one.basis[:, 0]))

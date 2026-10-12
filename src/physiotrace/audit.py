@@ -69,6 +69,7 @@ def audit_observational(
     epsilon: float = 0.01,
     delta: float = 0.01,
     C: float = 1.0,
+    rank: int = 1,
     n_random: int = 100,
     regimes: Mapping[str, float] | None = None,
     odds_ratio_magnitude: float | Mapping | None = None,
@@ -102,8 +103,10 @@ def audit_observational(
         Declared effect size for reliance and tolerated utility loss.
     C : float
         Inverse regularization of the heads and of the provenance probe.
+    rank : int
+        Rank of the target-conditional localization (1 in the paper).
     n_random : int
-        Number of rank-one Haar random controls per fold.
+        Number of rank-matched Haar random controls per fold.
     regimes : mapping, optional
         Regime name to log-odds-ratio multiplier; defaults to
         :data:`physiotrace.weights.REGIMES` (must include aligned,
@@ -152,13 +155,13 @@ def audit_observational(
             ),
         )
 
-        subspace, probe = conditional_direction(z_train, y_train, u_train, C=C)
+        subspace, probe = conditional_direction(z_train, y_train, u_train, rank=rank, C=C)
         residual_test = z_test - class_means(z_train, y_train)[y_codes[test]]
         device_score = probe.predict_proba(subspace.whitening.transform(residual_test))[:, 1]
         accessibility.append(_conditional_auroc(u_codes[test], y_codes[test], device_score))
 
         z_targeted = subspace.remove(z_test)
-        controls = random_subspaces(subspace.whitening, 1, n_random, seed=seed + 10_000 * (index + 1) + h.shape[1])
+        controls = random_subspaces(subspace.whitening, rank, n_random, seed=seed + 10_000 * (index + 1) + h.shape[1])
         for name, head in heads.items():
             arm_scores[(fold, name, FULL)] = head.scores(z_test)
             arm_scores[(fold, name, TARGETED)] = head.scores(z_targeted)
@@ -228,7 +231,7 @@ def audit_observational(
         recover={"conditional_accessibility_auroc": float(np.mean(accessibility))},
         aurocs=aurocs,
         details={"folds": pd.DataFrame(fold_rows)},
-        rank=1,
+        rank=rank,
         epsilon=epsilon,
         delta=delta,
         confidence_level=confidence_level,

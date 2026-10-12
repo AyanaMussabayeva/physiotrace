@@ -127,7 +127,8 @@ identical random controls. Both methods give the same projections.
 ## Status
 
 Version 0.1 (development). Binary targets with binary provenance
-(observational) or `K` paired views. Multiclass targets, regression
+(observational, target-conditional localization of any rank; rank 1 as in the
+paper) or `K` paired views. Multiclass targets, regression
 endpoints, and multi-encoder pooling are planned.
 
 ## License

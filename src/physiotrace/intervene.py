@@ -172,6 +172,7 @@ def conditional_direction(
     y,
     u,
     *,
+    rank: int = 1,
     C: float = 1.0,
     max_iter: int = 2_000,
     tol: float = 1e-7,
@@ -180,8 +181,11 @@ def conditional_direction(
 
     Training class means are subtracted, the residuals are whitened, and an
     independence-weighted logistic probe for ``u`` is fitted; the unit normal
-    of its separator is the rank-one basis (paper Eq. 7). Returns the subspace
-    and the fitted probe (which acts on whitened residuals).
+    of its separator is the rank-one basis (paper Eq. 7). For ``rank > 1`` the
+    probe is refitted ``rank - 1`` more times, each time on the whitened
+    residuals with the directions found so far projected out, and the normals
+    form an orthonormal basis. Returns the subspace and the first probe (which
+    acts on whitened residuals).
     """
 
     h = as_matrix(embeddings, name="embeddings")
@@ -190,10 +194,21 @@ def conditional_direction(
     same_length(embeddings=h, y=y, u=u)
     residual = h - class_means(h, y)[y]
     whitening = Whitening.fit(residual)
-    probe = LogisticRegression(C=C, solver="lbfgs", max_iter=max_iter, tol=tol)
-    probe.fit(whitening.transform(residual), u, sample_weight=independence_weights(y, u))
-    direction = probe.coef_.reshape(-1)
-    return Subspace(whitening, (direction / np.linalg.norm(direction))[:, None]), probe
+    if not 1 <= rank < whitening.rank:
+        raise ValueError(f"rank must lie in [1, {whitening.rank - 1}].")
+    whitened = whitening.transform(residual)
+    weights = independence_weights(y, u)
+    basis = np.zeros((whitening.rank, 0))
+    first_probe = None
+    for _ in range(rank):
+        values = whitened - (whitened @ basis) @ basis.T
+        probe = LogisticRegression(C=C, solver="lbfgs", max_iter=max_iter, tol=tol)
+        probe.fit(values, u, sample_weight=weights)
+        first_probe = probe if first_probe is None else first_probe
+        direction = probe.coef_.reshape(-1)
+        direction = direction - basis @ (basis.T @ direction)
+        basis = np.column_stack([basis, direction / np.linalg.norm(direction)])
+    return Subspace(whitening, basis), first_probe
 
 
 def class_means(embeddings, y) -> np.ndarray:

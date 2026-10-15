@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physiotrace"
-version = "0.1.0a1"
+version = "0.1.0"
 description = "Behavioral audit of provenance reliance in frozen-encoder task heads (Recover, Stress, Intervene, Verify)."
 readme = "README.md"
 requires-python = ">=3.10"

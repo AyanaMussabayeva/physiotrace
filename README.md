@@ -30,8 +30,8 @@ make an audit misleading.
 ## Install
 
 ```bash
-pip install --pre physiotrace         # 0.1.0a1 is a pre-release
-pip install --pre "physiotrace[plot]" # with matplotlib, for the tutorial figures
+pip install physiotrace
+pip install "physiotrace[plot]"   # with matplotlib, for the tutorial figures
 ```
 
 Python 3.10–3.13. Tested on every push from the oldest supported dependencies
@@ -161,7 +161,7 @@ identical random controls. Both methods give the same projections.
 
 ## Status
 
-Version 0.1 (development). Binary targets with binary provenance
+Version 0.1. Binary targets with binary provenance
 (observational, target-conditional localization of any rank; rank 1 as in the
 paper) or `K` paired views. Multiclass targets, regression
 endpoints, and multi-encoder pooling are planned.

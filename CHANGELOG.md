@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0
+
+First release: `pip install physiotrace`. Same code as 0.1.0a1.
+
 ## 0.1.0a1
 
 First public pre-release.
